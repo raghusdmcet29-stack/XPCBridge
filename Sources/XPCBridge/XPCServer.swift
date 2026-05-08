@@ -45,7 +45,7 @@ class XPCServerListener: NSObject, NSXPCListenerDelegate {
     // Called when a new client connects
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        
+        print("XPCBridge: New connection request, serverImpl exists: \(serverImpl != nil)")
         // Prevent duplicate connections
         if serverImpl != nil {
             return false
