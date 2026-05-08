@@ -19,9 +19,21 @@ class XPCServerImpl: NSObject, XPCBridgeProtocol {
     }
 
     // Called when server wants to send a message to client
+    // Called when server wants to send a message to client
     func sendToClient(_ message: String) {
-        let proxy = connection?.remoteObjectProxy as? XPCBridgeClientProtocol
-        proxy?.receive(message)
+        guard let connection = connection else {
+            print("XPCBridge: No client connected, message dropped: \(message)")
+            return
+        }
+        let proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            print("XPCBridge: Send to client failed - \(error.localizedDescription)")
+        } as? XPCBridgeClientProtocol
+        
+        guard let proxy = proxy else {
+            print("XPCBridge: Client proxy unavailable")
+            return
+        }
+        proxy.receive(message)
     }
 }
 
@@ -33,7 +45,12 @@ class XPCServerListener: NSObject, NSXPCListenerDelegate {
     // Called when a new client connects
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-
+        
+        // Prevent duplicate connections
+        if serverImpl != nil {
+            return false
+        }
+        
         // Create server implementation
         let impl = XPCServerImpl()
         impl.onReceive = onReceive
