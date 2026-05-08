@@ -18,9 +18,10 @@ class XPCServerImpl: NSObject, XPCBridgeProtocol {
         onReceive?(message)
     }
 
-    // Called when server wants to send a message to client
+ 
     // Called when server wants to send a message to client
     func sendToClient(_ message: String) {
+        print("XPCBridge: sendToClient called with: \(message)")
         guard let connection = connection else {
             print("XPCBridge: No client connected, message dropped: \(message)")
             return
