@@ -41,7 +41,7 @@ class XPCClientConnection {
     func send(_ message: String) {
         let proxy = connection.remoteObjectProxyWithErrorHandler { error in
             print("XPC Error: \(error.localizedDescription)")
-        } as? XPCBridgeProtocol
-        proxy?.send(message)
+        } as! XPCBridgeProtocol
+        proxy.send(message)
     }
 }
