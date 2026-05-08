@@ -61,6 +61,7 @@ public class XPCBridge {
     }
 
     private func startClient() {
+        print("XPCBridge: startClient called")
         let connection = XPCClientConnection(serviceName: serviceName)
         connection.onReceive { [weak self] message in
             self?.onReceiveHandler?(message)
