@@ -14,7 +14,6 @@ class XPCServerImpl: NSObject, XPCBridgeProtocol {
 
     // Called when client sends a message to server
     func send(_ message: String) {
-        print("Server received: \(message)")
         onReceive?(message)
     }
 

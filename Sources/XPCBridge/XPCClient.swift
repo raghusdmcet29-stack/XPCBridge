@@ -13,7 +13,6 @@ class XPCClientReceiver: NSObject, XPCBridgeClientProtocol {
 
     // Called when server sends a message to client
     func receive(_ message: String) {
-        print("Client received: \(message)")
         onReceive?(message)
     }
 }
