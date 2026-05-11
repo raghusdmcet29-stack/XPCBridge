@@ -21,26 +21,39 @@ class XPCClientConnection {
 
     private let connection: NSXPCConnection
     private let receiver = XPCClientReceiver()
+    private var proxy: XPCBridgeProtocol?
 
     init(serviceName: String) {
-        // Setup connection to server
         connection = NSXPCConnection(machServiceName: serviceName)
         connection.remoteObjectInterface = NSXPCInterface(with: XPCBridgeProtocol.self)
         connection.exportedInterface = NSXPCInterface(with: XPCBridgeClientProtocol.self)
         connection.exportedObject = receiver
+        
+        connection.invalidationHandler = { [weak self] in
+            print("XPCBridge: Connection invalidated")
+            self?.proxy = nil
+        }
+        connection.interruptionHandler = { [weak self] in
+            print("XPCBridge: Connection interrupted")
+            self?.proxy = nil
+        }
+        
         connection.resume()
+        proxy = connection.remoteObjectProxyWithErrorHandler { error in
+            print("XPC Error: \(error.localizedDescription)")
+        } as? XPCBridgeProtocol
     }
 
-    // Set handler for incoming messages from server
     func onReceive(_ handler: @escaping (String) -> Void) {
         receiver.onReceive = handler
     }
 
-    // Send message to server
     func send(_ message: String) {
-        let proxy = connection.remoteObjectProxyWithErrorHandler { error in
-            print("XPC Error: \(error.localizedDescription)")
-        } as! XPCBridgeProtocol
-        proxy.send(message)
+        if proxy == nil {
+            proxy = connection.remoteObjectProxyWithErrorHandler { error in
+                print("XPC Error: \(error.localizedDescription)")
+            } as? XPCBridgeProtocol
+        }
+        proxy?.send(message)
     }
 }

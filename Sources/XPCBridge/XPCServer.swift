@@ -46,22 +46,29 @@ class XPCServerListener: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         print("XPCBridge: New connection request, serverImpl exists: \(serverImpl != nil)")
-        // Prevent duplicate connections
-        if serverImpl != nil {
-            return false
-        }
         
-        // Create server implementation
+        // Invalidate old connection cleanly before replacing
+        serverImpl?.connection?.invalidate()
+        serverImpl = nil
+        
         let impl = XPCServerImpl()
         impl.onReceive = onReceive
         impl.connection = connection
 
-        // Setup connection
         connection.exportedInterface = NSXPCInterface(with: XPCBridgeProtocol.self)
         connection.exportedObject = impl
         connection.remoteObjectInterface = NSXPCInterface(with: XPCBridgeClientProtocol.self)
+        
+        connection.invalidationHandler = { [weak self] in
+            print("XPCBridge: Client disconnected (invalidated)")
+            self?.serverImpl = nil
+        }
+        connection.interruptionHandler = { [weak self] in
+            print("XPCBridge: Client interrupted")
+            self?.serverImpl = nil
+        }
+        
         connection.resume()
-
         serverImpl = impl
         return true
     }
