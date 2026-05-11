@@ -41,7 +41,7 @@ class XPCServerListener: NSObject, NSXPCListenerDelegate {
 
     var onReceive: ((String) -> Void)?
     var serverImpl: XPCServerImpl?
-
+    var onClientDisconnected: (() -> Void)?  // ← add this
     // Called when a new client connects
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
@@ -62,10 +62,13 @@ class XPCServerListener: NSObject, NSXPCListenerDelegate {
         connection.invalidationHandler = { [weak self] in
             print("XPCBridge: Client disconnected (invalidated)")
             self?.serverImpl = nil
+            self?.onClientDisconnected?()  // ← added
         }
         connection.interruptionHandler = { [weak self] in
             print("XPCBridge: Client interrupted")
             self?.serverImpl = nil
+            self?.onClientDisconnected?()  // ← added
+
         }
         
         connection.resume()

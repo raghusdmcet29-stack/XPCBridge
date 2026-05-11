@@ -16,6 +16,7 @@ public class XPCBridge {
     private var serverListener: XPCServerListener?
     private var clientConnection: XPCClientConnection?
     private var onReceiveHandler: ((String) -> Void)?
+    private var onClientDisconnectedHandler: (() -> Void)?
 
     public init(serviceName: String, role: XPCRole) {
         self.serviceName = serviceName
@@ -53,13 +54,13 @@ public class XPCBridge {
         let listener = NSXPCListener(machServiceName: serviceName)
         let delegate = XPCServerListener()
         delegate.onReceive = onReceiveHandler
+        delegate.onClientDisconnected = onClientDisconnectedHandler  // ← add
         listener.delegate = delegate
         listener.resume()
         serverListener = delegate
         print("XPCBridge: Server started on \(serviceName)")
         RunLoop.main.run()
     }
-
     private func startClient() {
         print("XPCBridge: startClient called")
         let connection = XPCClientConnection(serviceName: serviceName)
@@ -68,5 +69,10 @@ public class XPCBridge {
         }
         clientConnection = connection
         print("XPCBridge: Client connected to \(serviceName)")
+    }
+    
+
+    public func onClientDisconnected(_ handler: @escaping () -> Void) {
+        onClientDisconnectedHandler = handler
     }
 }
