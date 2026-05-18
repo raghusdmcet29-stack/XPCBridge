@@ -15,7 +15,7 @@ public class XPCBridge {
 
     private var serverListener: XPCServerListener?
     private var clientConnection: XPCClientConnection?
-    private var onReceiveHandler: ((String) -> Void)?
+    private var onReceiveHandler: ((String, (String) -> Void) -> Void)?
     private var onClientDisconnectedHandler: (() -> Void)?
     
     private var pendingRequests: [String: CheckedContinuation<String, Error>] = [:]
@@ -27,7 +27,8 @@ public class XPCBridge {
     }
 
     // Set handler for incoming messages
-    public func onReceive(_ handler: @escaping (String) -> Void) {
+    // new
+    public func onReceive(_ handler: @escaping (String, (String) -> Void) -> Void) {
         onReceiveHandler = handler
     }
 
@@ -60,17 +61,15 @@ public class XPCBridge {
             guard let self else { return }
 
             if let message = try? XPCMessage.decoded(from: raw) {
-                // Give user handler the payload, plus a reply closure
-                self.onReceiveHandler?(message.payload)
-
-                // Auto-reply with the same id so client can match it
-                if let reply = try? XPCMessage(id: UUID().uuidString,
-                                               payload: "ack",
-                                               replyTo: message.id).encoded() {
-                    self.serverListener?.serverImpl?.sendToClient(reply)
+                self.onReceiveHandler?(message.payload) { replyPayload in
+                    if let reply = try? XPCMessage(id: UUID().uuidString,
+                                                   payload: replyPayload,
+                                                   replyTo: message.id).encoded() {
+                        self.serverListener?.serverImpl?.sendToClient(reply)
+                    }
                 }
             } else {
-                self.onReceiveHandler?(raw)
+                self.onReceiveHandler?(raw) { _ in }
             }
         }
         delegate.onClientDisconnected = onClientDisconnectedHandler
@@ -95,11 +94,11 @@ public class XPCBridge {
                     }
                 } else {
                     // This is a regular incoming message
-                    self.onReceiveHandler?(message.payload)
+                    self.onReceiveHandler?(message.payload) { _ in }
                 }
             } else {
                 // Not an envelope — pass raw string through (backward compat)
-                self.onReceiveHandler?(raw)
+                self.onReceiveHandler?(raw) { _ in }
             }
         }
         clientConnection = connection
