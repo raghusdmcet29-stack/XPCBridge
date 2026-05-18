@@ -17,6 +17,9 @@ public class XPCBridge {
     private var clientConnection: XPCClientConnection?
     private var onReceiveHandler: ((String) -> Void)?
     private var onClientDisconnectedHandler: (() -> Void)?
+    
+    private var pendingRequests: [String: CheckedContinuation<String, Error>] = [:]
+    private let pendingLock = NSLock()
 
     public init(serviceName: String, role: XPCRole) {
         self.serviceName = serviceName
@@ -53,8 +56,24 @@ public class XPCBridge {
     private func startServer() {
         let listener = NSXPCListener(machServiceName: serviceName)
         let delegate = XPCServerListener()
-        delegate.onReceive = onReceiveHandler
-        delegate.onClientDisconnected = onClientDisconnectedHandler  // ← add
+        delegate.onReceive = { [weak self] raw in
+            guard let self else { return }
+
+            if let message = try? XPCMessage.decoded(from: raw) {
+                // Give user handler the payload, plus a reply closure
+                self.onReceiveHandler?(message.payload)
+
+                // Auto-reply with the same id so client can match it
+                if let reply = try? XPCMessage(id: UUID().uuidString,
+                                               payload: "ack",
+                                               replyTo: message.id).encoded() {
+                    self.serverListener?.serverImpl?.sendToClient(reply)
+                }
+            } else {
+                self.onReceiveHandler?(raw)
+            }
+        }
+        delegate.onClientDisconnected = onClientDisconnectedHandler
         listener.delegate = delegate
         listener.resume()
         serverListener = delegate
@@ -64,8 +83,24 @@ public class XPCBridge {
     private func startClient() {
         print("XPCBridge: startClient called")
         let connection = XPCClientConnection(serviceName: serviceName)
-        connection.onReceive { [weak self] message in
-            self?.onReceiveHandler?(message)
+        connection.onReceive { [weak self] raw in
+            guard let self else { return }
+
+            // Try to decode as an envelope
+            if let message = try? XPCMessage.decoded(from: raw) {
+                if let replyTo = message.replyTo {
+                    // This is a reply — resume the waiting continuation
+                    if let continuation = self.removePending(id: replyTo) {
+                        continuation.resume(returning: message.payload)
+                    }
+                } else {
+                    // This is a regular incoming message
+                    self.onReceiveHandler?(message.payload)
+                }
+            } else {
+                // Not an envelope — pass raw string through (backward compat)
+                self.onReceiveHandler?(raw)
+            }
         }
         clientConnection = connection
         print("XPCBridge: Client connected to \(serviceName)")
@@ -74,5 +109,34 @@ public class XPCBridge {
 
     public func onClientDisconnected(_ handler: @escaping () -> Void) {
         onClientDisconnectedHandler = handler
+    }
+    
+    private func addPending(id: String, continuation: CheckedContinuation<String, Error>) {
+        pendingLock.lock()
+        pendingRequests[id] = continuation
+        pendingLock.unlock()
+    }
+    
+    @discardableResult
+    private func removePending(id: String) -> CheckedContinuation<String, Error>? {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return pendingRequests.removeValue(forKey: id)
+    }
+    
+    public func request(_ payload: String) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            let id = UUID().uuidString
+            addPending(id: id, continuation: continuation)
+            
+            do {
+                let message = XPCMessage(id: id, payload: payload, replyTo: nil)
+                let encoded = try message.encoded()
+                send(encoded)
+            } catch {
+                removePending(id: id)
+                continuation.resume(throwing: error)
+            }
+        }
     }
 }
